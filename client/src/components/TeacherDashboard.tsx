@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import '../styles/TeacherDashboard.css';
 
 interface Submission {
@@ -13,6 +15,7 @@ interface Submission {
     submittedAt: string;
     theoryMarks?: number;
     internalMarks?: number;
+    displayOrder?: number;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -23,6 +26,13 @@ const TeacherDashboard: React.FC = () => {
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [marksState, setMarksState] = useState<Record<number, { theory: string, internal: string }>>({});
     const [saving, setSaving] = useState<number | null>(null);
+    const [pdfCount, setPdfCount] = useState<string>('10');
+    
+    // Drag and drop state
+    const dragItem = useRef<number | null>(null);
+    const dragOverItem = useRef<number | null>(null);
+    const [isOrderChanged, setIsOrderChanged] = useState(false);
+
     const navigate = useNavigate();
     const teacherName = localStorage.getItem('teacherName');
 
@@ -37,13 +47,14 @@ const TeacherDashboard: React.FC = () => {
 
     const fetchSubmissions = async (token: string) => {
         try {
+            setLoading(true);
             const response = await axios.get(`${API_URL}/api/submissions`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data: Submission[] = response.data;
             setSubmissions(data);
+            setIsOrderChanged(false);
             
-            // Initialize local marks state from DB
             const initMarks: Record<number, { theory: string, internal: string }> = {};
             data.forEach(sub => {
                 initMarks[sub.id] = {
@@ -54,8 +65,10 @@ const TeacherDashboard: React.FC = () => {
             setMarksState(initMarks);
         } catch (error) {
             console.error('Error fetching submissions:', error);
-            localStorage.removeItem('teacherToken');
-            navigate('/teacher-login');
+            if ((error as any).response?.status === 401 || (error as any).response?.status === 403) {
+                localStorage.removeItem('teacherToken');
+                navigate('/teacher-login');
+            }
         } finally {
             setLoading(false);
         }
@@ -96,12 +109,91 @@ const TeacherDashboard: React.FC = () => {
         }
     };
 
+    const handleDelete = async (id: number) => {
+        if (!window.confirm("Are you sure you want to delete this student's data?")) return;
+        
+        const token = localStorage.getItem('teacherToken');
+        try {
+            await axios.delete(`${API_URL}/api/submissions/${id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setSubmissions(prev => prev.filter(sub => sub.id !== id));
+            alert('Deleted successfully.');
+        } catch (error) {
+            console.error('Error deleting submission:', error);
+            alert('Failed to delete.');
+        }
+    };
+
     const calculateTotalAndPercentage = (theoryStr: string, internalStr: string) => {
         const theory = parseInt(theoryStr, 10) || 0;
         const internal = parseInt(internalStr, 10) || 0;
-        const total = theory + internal;
-        // Since max is 100, Percentage = Total
-        return total;
+        return theory + internal;
+    };
+
+    const handleSort = () => {
+        const _submissions = [...submissions];
+        if (dragItem.current !== null && dragOverItem.current !== null) {
+            const draggedItemContent = _submissions.splice(dragItem.current, 1)[0];
+            _submissions.splice(dragOverItem.current, 0, draggedItemContent);
+            
+            dragItem.current = null;
+            dragOverItem.current = null;
+            setSubmissions(_submissions);
+            setIsOrderChanged(true);
+        }
+    };
+
+    const saveSequence = async () => {
+        const token = localStorage.getItem('teacherToken');
+        const orderedIds = submissions.map(sub => sub.id);
+        try {
+            await axios.put(`${API_URL}/api/submissions/reorder`, { orderedIds }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setIsOrderChanged(false);
+            alert('Sequence saved successfully!');
+        } catch (error) {
+            console.error('Error saving sequence:', error);
+            alert('Failed to save sequence.');
+        }
+    };
+
+    const generatePDF = () => {
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text("SWAYAM Student Management System", 14, 22);
+        
+        const count = parseInt(pdfCount, 10) || submissions.length;
+        const studentsToExport = submissions.slice(0, count);
+
+        const tableColumn = ["S.No", "Name", "Roll No", "Course", "Enrolled", "Theory", "Internal", "Total (%)"];
+        const tableRows: any[] = [];
+
+        studentsToExport.forEach((sub, index) => {
+            const currentMarks = marksState[sub.id] || { theory: '', internal: '' };
+            const total = calculateTotalAndPercentage(currentMarks.theory, currentMarks.internal);
+            
+            const rowData = [
+                index + 1,
+                sub.name,
+                sub.rollNo,
+                sub.course,
+                sub.enrolled,
+                currentMarks.theory || '-',
+                currentMarks.internal || '-',
+                total
+            ];
+            tableRows.push(rowData);
+        });
+
+        autoTable(doc, {
+            head: [tableColumn],
+            body: tableRows,
+            startY: 30,
+        });
+
+        doc.save(`students_list_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
     return (
@@ -116,6 +208,23 @@ const TeacherDashboard: React.FC = () => {
                     <button onClick={handleLogout} className="logout-btn">Logout</button>
                 </div>
             </header>
+
+            <div className="toolbar">
+                <div className="pdf-controls">
+                    <label>Students for PDF:</label>
+                    <input 
+                        type="number" 
+                        className="pdf-count-input"
+                        value={pdfCount} 
+                        onChange={(e) => setPdfCount(e.target.value)}
+                        min="1"
+                    />
+                    <button onClick={generatePDF} className="pdf-btn">Download PDF</button>
+                </div>
+                {isOrderChanged && (
+                    <button onClick={saveSequence} className="save-seq-btn">💾 Save Sequence</button>
+                )}
+            </div>
 
             {loading ? (
                 <p>Loading records...</p>
@@ -135,13 +244,22 @@ const TeacherDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {submissions.length > 0 ? submissions.map((sub) => {
+                            {submissions.length > 0 ? submissions.map((sub, index) => {
                                 const currentMarks = marksState[sub.id] || { theory: '', internal: '' };
                                 const total = calculateTotalAndPercentage(currentMarks.theory, currentMarks.internal);
                                 
                                 return (
-                                <tr key={sub.id}>
-                                    <td>{sub.name}</td>
+                                <tr 
+                                    key={sub.id}
+                                    draggable
+                                    onDragStart={() => (dragItem.current = index)}
+                                    onDragEnter={() => (dragOverItem.current = index)}
+                                    onDragEnd={handleSort}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    className="draggable-row"
+                                    title="Drag to reorder"
+                                >
+                                    <td><strong>☰</strong> {sub.name}</td>
                                     <td>{sub.rollNo}</td>
                                     <td>{sub.course}</td>
                                     <td>
@@ -178,13 +296,19 @@ const TeacherDashboard: React.FC = () => {
                                         <strong>{total}</strong> <br/>
                                         <small className="percentage-badge">{total}%</small>
                                     </td>
-                                    <td>
+                                    <td className="actions-cell">
                                         <button 
                                             className="save-marks-btn"
                                             onClick={() => saveMarks(sub.id)}
                                             disabled={saving === sub.id}
                                         >
                                             {saving === sub.id ? 'Saving...' : 'Save'}
+                                        </button>
+                                        <button 
+                                            className="delete-btn"
+                                            onClick={() => handleDelete(sub.id)}
+                                        >
+                                            Delete
                                         </button>
                                     </td>
                                 </tr>

@@ -230,3 +230,95 @@
     background-color: #95a5a6;
     cursor: not-allowed;
 }
+/* Toolbar and PDF Controls */
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.pdf-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: bold;
+}
+
+.pdf-count-input {
+    width: 60px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.pdf-btn {
+    padding: 8px 16px;
+    background-color: #8e44ad;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.pdf-btn:hover {
+    background-color: #732d91;
+}
+
+.save-seq-btn {
+    padding: 8px 16px;
+    background-color: #f39c12;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.save-seq-btn:hover {
+    background-color: #d68910;
+}
+
+/* Draggable Rows */
+.draggable-row {
+    cursor: grab;
+}
+
+.draggable-row:active {
+    cursor: grabbing;
+    background-color: #f8f9fa;
+}
+
+/* Actions Cell */
+.actions-cell {
+    display: flex;
+    gap: 5px;
+}
+
+.delete-btn {
+    padding: 6px 12px;
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.delete-btn:hover {
+    background-color: #c0392b;
+}

@@ -56,6 +56,7 @@ async function initDatabase() {
         screenshot TEXT,
         theoryMarks INTEGER DEFAULT NULL,
         internalMarks INTEGER DEFAULT NULL,
+        displayOrder INTEGER DEFAULT 0,
         submittedAt DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
@@ -63,9 +64,10 @@ async function initDatabase() {
     try {
         db.run(`ALTER TABLE submissions ADD COLUMN theoryMarks INTEGER DEFAULT NULL`);
         db.run(`ALTER TABLE submissions ADD COLUMN internalMarks INTEGER DEFAULT NULL`);
-    } catch (e) {
-        // Columns likely already exist, ignore
-    }
+    } catch (e) {}
+    try {
+        db.run(`ALTER TABLE submissions ADD COLUMN displayOrder INTEGER DEFAULT 0`);
+    } catch (e) {}
 
     db.run(`CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,8 +157,17 @@ app.post('/api/submit', upload.single('screenshot'), (req, res) => {
     }
 
     try {
-        db.run(`INSERT INTO submissions (name, rollNo, course, enrolled, screenshot) VALUES (?, ?, ?, ?, ?)`,
-            [name, rollNo, course, enrolled, screenshot]);
+        // Get max displayOrder to append to the bottom
+        let maxOrder = 0;
+        try {
+            const result = db.exec(`SELECT MAX(displayOrder) FROM submissions`);
+            if (result.length > 0 && result[0].values.length > 0 && result[0].values[0][0] !== null) {
+                maxOrder = result[0].values[0][0] + 1;
+            }
+        } catch (e) {}
+
+        db.run(`INSERT INTO submissions (name, rollNo, course, enrolled, screenshot, displayOrder) VALUES (?, ?, ?, ?, ?, ?)`,
+            [name, rollNo, course, enrolled, screenshot, maxOrder]);
         saveDatabase();
         
         const lastId = db.exec(`SELECT last_insert_rowid()`)[0].values[0][0];
@@ -184,7 +195,7 @@ const authenticateToken = (req, res, next) => {
 // Get All Submissions (Requires Login)
 app.get('/api/submissions', authenticateToken, (req, res) => {
     try {
-        const result = db.exec(`SELECT * FROM submissions ORDER BY submittedAt DESC`);
+        const result = db.exec(`SELECT * FROM submissions ORDER BY displayOrder ASC, submittedAt DESC`);
         if (result.length === 0) return res.json([]);
 
         const columns = result[0].columns;
@@ -215,6 +226,40 @@ app.put('/api/submissions/:id/marks', authenticateToken, (req, res) => {
     } catch (err) {
         console.error('Error updating marks:', err);
         res.status(500).json({ error: 'Failed to update marks' });
+    }
+});
+
+// Delete Submission (Requires Login)
+app.delete('/api/submissions/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+
+    try {
+        db.run(`DELETE FROM submissions WHERE id = ?`, [id]);
+        saveDatabase();
+        res.json({ message: 'Submission deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting submission:', err);
+        res.status(500).json({ error: 'Failed to delete submission' });
+    }
+});
+
+// Reorder Submissions (Requires Login)
+app.put('/api/submissions/reorder', authenticateToken, (req, res) => {
+    const { orderedIds } = req.body; // Array of IDs in the new order
+
+    if (!Array.isArray(orderedIds)) {
+        return res.status(400).json({ error: 'Invalid data format' });
+    }
+
+    try {
+        orderedIds.forEach((id, index) => {
+            db.run(`UPDATE submissions SET displayOrder = ? WHERE id = ?`, [index, id]);
+        });
+        saveDatabase();
+        res.json({ message: 'Order saved successfully' });
+    } catch (err) {
+        console.error('Error reordering submissions:', err);
+        res.status(500).json({ error: 'Failed to save order' });
     }
 });
 
