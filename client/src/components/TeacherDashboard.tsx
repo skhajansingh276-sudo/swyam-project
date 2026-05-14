@@ -27,6 +27,7 @@ const TeacherDashboard: React.FC = () => {
     const [marksState, setMarksState] = useState<Record<number, { theory: string, internal: string }>>({});
     const [saving, setSaving] = useState<number | null>(null);
     const [pdfCount, setPdfCount] = useState<string>('10');
+    const [searchTerm, setSearchTerm] = useState<string>('');
     
     // Drag and drop state
     const dragItem = useRef<number | null>(null);
@@ -159,13 +160,22 @@ const TeacherDashboard: React.FC = () => {
         }
     };
 
+    const filteredSubmissions = submissions.filter(sub => {
+        const search = searchTerm.toLowerCase();
+        return (
+            sub.name.toLowerCase().includes(search) ||
+            sub.rollNo.toLowerCase().includes(search) ||
+            sub.course.toLowerCase().includes(search)
+        );
+    });
+
     const generatePDF = () => {
         const doc = new jsPDF();
         doc.setFontSize(18);
         doc.text("SWAYAM Student Management System", 14, 22);
         
-        const count = parseInt(pdfCount, 10) || submissions.length;
-        const studentsToExport = submissions.slice(0, count);
+        const count = parseInt(pdfCount, 10) || filteredSubmissions.length;
+        const studentsToExport = filteredSubmissions.slice(0, count);
 
         const tableColumn = ["S.No", "Name", "Roll No", "Course", "Enrolled", "Theory", "Internal", "Total (%)"];
         const tableRows: any[] = [];
@@ -210,6 +220,15 @@ const TeacherDashboard: React.FC = () => {
             </header>
 
             <div className="toolbar">
+                <div className="search-container">
+                    <input 
+                        type="text" 
+                        placeholder="Search by name, roll no, or course..." 
+                        className="search-input"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
                 <div className="pdf-controls">
                     <label>Students for PDF:</label>
                     <input 
@@ -244,7 +263,7 @@ const TeacherDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {submissions.length > 0 ? submissions.map((sub, index) => {
+                            {filteredSubmissions.length > 0 ? filteredSubmissions.map((sub, index) => {
                                 const currentMarks = marksState[sub.id] || { theory: '', internal: '' };
                                 const total = calculateTotalAndPercentage(currentMarks.theory, currentMarks.internal);
                                 
@@ -313,7 +332,7 @@ const TeacherDashboard: React.FC = () => {
                                     </td>
                                 </tr>
                             )}) : (
-                                <tr><td colSpan={8} style={{textAlign: 'center'}}>No submissions found.</td></tr>
+                                <tr><td colSpan={8} style={{textAlign: 'center'}}>No submissions match your search.</td></tr>
                             )}
                         </tbody>
                     </table>
