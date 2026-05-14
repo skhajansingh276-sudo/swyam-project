@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const sqlite3 = require('sqlite3').verbose();
+const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
@@ -30,34 +30,50 @@ if (!fs.existsSync('./uploads')) {
     fs.mkdirSync('./uploads');
 }
 
-// SQLite Database Setup
+// SQLite Database Setup using sql.js (pure JS, no native bindings)
 const dbPath = path.join(__dirname, 'database.sqlite');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Database connection error:', err.message);
-    } else {
-        console.log('Connected to SQLite database.');
-        
-        // Submissions table
-        db.run(`CREATE TABLE IF NOT EXISTS submissions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            rollNo TEXT NOT NULL,
-            course TEXT NOT NULL,
-            enrolled TEXT NOT NULL,
-            screenshot TEXT,
-            submittedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
+let db;
 
-        // Teachers table
-        db.run(`CREATE TABLE IF NOT EXISTS teachers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            name TEXT NOT NULL
-        )`);
+async function initDatabase() {
+    const SQL = await initSqlJs();
+    
+    // Load existing database or create new one
+    if (fs.existsSync(dbPath)) {
+        const fileBuffer = fs.readFileSync(dbPath);
+        db = new SQL.Database(fileBuffer);
+    } else {
+        db = new SQL.Database();
     }
-});
+    
+    // Create tables
+    db.run(`CREATE TABLE IF NOT EXISTS submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        rollNo TEXT NOT NULL,
+        course TEXT NOT NULL,
+        enrolled TEXT NOT NULL,
+        screenshot TEXT,
+        submittedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS teachers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        name TEXT NOT NULL
+    )`);
+
+    console.log('Connected to SQLite database (sql.js).');
+}
+
+// Save database to file periodically
+function saveDatabase() {
+    if (db) {
+        const data = db.export();
+        const buffer = Buffer.from(data);
+        fs.writeFileSync(dbPath, buffer);
+    }
+}
 
 // Multer Storage Configuration
 const storage = multer.diskStorage({
@@ -78,29 +94,42 @@ app.post('/api/teacher/register', async (req, res) => {
     const { name, email, password } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const query = `INSERT INTO teachers (name, email, password) VALUES (?, ?, ?)`;
-
-    db.run(query, [name, email, hashedPassword], function(err) {
-        if (err) return res.status(400).json({ error: 'Email already exists' });
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        db.run(`INSERT INTO teachers (name, email, password) VALUES (?, ?, ?)`, [name, email, hashedPassword]);
+        saveDatabase();
         res.status(201).json({ message: 'Teacher registered successfully' });
-    });
+    } catch (err) {
+        res.status(400).json({ error: 'Email already exists' });
+    }
 });
 
 // Teacher Login
-app.post('/api/teacher/login', (req, res) => {
+app.post('/api/teacher/login', async (req, res) => {
     const { email, password } = req.body;
-    const query = `SELECT * FROM teachers WHERE email = ?`;
 
-    db.get(query, [email], async (err, teacher) => {
-        if (err || !teacher) return res.status(401).json({ error: 'Invalid credentials' });
+    try {
+        const result = db.exec(`SELECT * FROM teachers WHERE email = ?`, [email]);
+        if (result.length === 0 || result[0].values.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const row = result[0].values[0];
+        const teacher = {
+            id: row[0],
+            email: row[1],
+            password: row[2],
+            name: row[3]
+        };
 
         const isMatch = await bcrypt.compare(password, teacher.password);
         if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
         const token = jwt.sign({ id: teacher.id, email: teacher.email }, SECRET_KEY, { expiresIn: '1d' });
         res.json({ token, name: teacher.name });
-    });
+    } catch (err) {
+        res.status(500).json({ error: 'Login failed' });
+    }
 });
 
 // --- STUDENT SUBMISSION ROUTES ---
@@ -114,11 +143,16 @@ app.post('/api/submit', upload.single('screenshot'), (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const query = `INSERT INTO submissions (name, rollNo, course, enrolled, screenshot) VALUES (?, ?, ?, ?, ?)`;
-    db.run(query, [name, rollNo, course, enrolled, screenshot], function(err) {
-        if (err) return res.status(500).json({ error: 'Failed to save submission' });
-        res.status(201).json({ id: this.lastID, message: 'Submission successful' });
-    });
+    try {
+        db.run(`INSERT INTO submissions (name, rollNo, course, enrolled, screenshot) VALUES (?, ?, ?, ?, ?)`,
+            [name, rollNo, course, enrolled, screenshot]);
+        saveDatabase();
+        
+        const lastId = db.exec(`SELECT last_insert_rowid()`)[0].values[0][0];
+        res.status(201).json({ id: lastId, message: 'Submission successful' });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to save submission' });
+    }
 });
 
 // --- PROTECTED TEACHER ROUTES ---
@@ -138,13 +172,28 @@ const authenticateToken = (req, res, next) => {
 
 // Get All Submissions (Requires Login)
 app.get('/api/submissions', authenticateToken, (req, res) => {
-    const query = `SELECT * FROM submissions ORDER BY submittedAt DESC`;
-    db.all(query, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Failed to fetch submissions' });
+    try {
+        const result = db.exec(`SELECT * FROM submissions ORDER BY submittedAt DESC`);
+        if (result.length === 0) return res.json([]);
+
+        const columns = result[0].columns;
+        const rows = result[0].values.map(row => {
+            const obj = {};
+            columns.forEach((col, i) => { obj[col] = row[i]; });
+            return obj;
+        });
         res.json(rows);
-    });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch submissions' });
+    }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+// Initialize database then start server
+initDatabase().then(() => {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}).catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
 });
