@@ -15,6 +15,7 @@ const SECRET_KEY = process.env.SECRET_KEY || 'your_super_secret_key_change_this'
 // Middleware
 const allowedOrigins = [
     'http://localhost:5173',
+    'https://swyam-project-ankit.vercel.app',
     process.env.CLIENT_URL
 ].filter(Boolean);
 
