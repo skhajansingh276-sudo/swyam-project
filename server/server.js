@@ -54,8 +54,18 @@ async function initDatabase() {
         course TEXT NOT NULL,
         enrolled TEXT NOT NULL,
         screenshot TEXT,
+        theoryMarks INTEGER DEFAULT NULL,
+        internalMarks INTEGER DEFAULT NULL,
         submittedAt DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    // Try to add new columns to existing table (will fail silently if they already exist)
+    try {
+        db.run(`ALTER TABLE submissions ADD COLUMN theoryMarks INTEGER DEFAULT NULL`);
+        db.run(`ALTER TABLE submissions ADD COLUMN internalMarks INTEGER DEFAULT NULL`);
+    } catch (e) {
+        // Columns likely already exist, ignore
+    }
 
     db.run(`CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,6 +196,25 @@ app.get('/api/submissions', authenticateToken, (req, res) => {
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch submissions' });
+    }
+});
+
+// Update Marks for a Submission (Requires Login)
+app.put('/api/submissions/:id/marks', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const { theoryMarks, internalMarks } = req.body;
+
+    // Convert to integers, or null if empty
+    const tMarks = theoryMarks !== '' && theoryMarks !== undefined ? parseInt(theoryMarks, 10) : null;
+    const iMarks = internalMarks !== '' && internalMarks !== undefined ? parseInt(internalMarks, 10) : null;
+
+    try {
+        db.run(`UPDATE submissions SET theoryMarks = ?, internalMarks = ? WHERE id = ?`, [tMarks, iMarks, id]);
+        saveDatabase();
+        res.json({ message: 'Marks updated successfully' });
+    } catch (err) {
+        console.error('Error updating marks:', err);
+        res.status(500).json({ error: 'Failed to update marks' });
     }
 });
 

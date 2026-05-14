@@ -185,3 +185,48 @@
     border: none;
     padding: 0;
 }
+
+/* Marks Feature Styling */
+.marks-input {
+    width: 60px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.marks-input:focus {
+    border-color: #3498db;
+    outline: none;
+}
+
+.percentage-badge {
+    background-color: #f1c40f;
+    color: #2c3e50;
+    padding: 2px 6px;
+    border-radius: 12px;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+.save-marks-btn {
+    padding: 6px 12px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.save-marks-btn:hover:not(:disabled) {
+    background-color: #2980b9;
+}
+
+.save-marks-btn:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+}
