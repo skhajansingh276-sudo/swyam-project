@@ -40,7 +40,7 @@ const StudentForm: React.FC = () => {
         }
 
         try {
-            const response = await axios.post(`${API_URL}/api/submit`, data);
+            await axios.post(`${API_URL}/api/submit`, data);
             setMessage('Success! Your details have been submitted.');
             setFormData({ name: '', rollNo: '', course: 'MCA', enrolled: 'No' });
             setFile(null);
