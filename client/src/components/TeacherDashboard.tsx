@@ -206,144 +206,210 @@ const TeacherDashboard: React.FC = () => {
         doc.save(`students_list_${new Date().toISOString().split('T')[0]}.pdf`);
     };
 
+    // Calculate stats
+    const totalStudents = submissions.length;
+    const enrolledStudents = submissions.filter(s => s.enrolled === 'Yes').length;
+    const avgMarks = submissions.length > 0 
+        ? (submissions.reduce((acc, sub) => {
+            const marks = marksState[sub.id] || { theory: '0', internal: '0' };
+            return acc + calculateTotalAndPercentage(marks.theory, marks.internal);
+        }, 0) / submissions.length).toFixed(1)
+        : 0;
+
     return (
-        <div className="dashboard-container">
-            <header className="dashboard-header">
-                <div>
-                    <h2>Welcome, {teacherName}</h2>
-                    <p>SWAYAM Student Management System</p>
+        <div className="dashboard-wrapper">
+            <header className="dashboard-topbar">
+                <div className="welcome-text">
+                    <h1>Dashboard</h1>
+                    <p>Welcome back, <strong>{teacherName}</strong></p>
                 </div>
-                <div className="header-actions">
-                    <button onClick={() => fetchSubmissions(localStorage.getItem('teacherToken')!)} className="refresh-btn">Refresh</button>
-                    <button onClick={handleLogout} className="logout-btn">Logout</button>
+                <div className="topbar-actions">
+                    <button onClick={() => fetchSubmissions(localStorage.getItem('teacherToken')!)} className="btn btn-bg refresh-btn">
+                        <span>🔄</span> Refresh
+                    </button>
+                    <button onClick={handleLogout} className="btn logout-btn">
+                        <span>🚪</span> Logout
+                    </button>
                 </div>
             </header>
 
-            <div className="toolbar">
-                <div className="search-container">
-                    <input 
-                        type="text" 
-                        placeholder="Search by name, roll no, or course..." 
-                        className="search-input"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+            <div className="stats-grid">
+                <div className="stat-card card">
+                    <div className="stat-icon">👥</div>
+                    <div className="stat-info">
+                        <h3>{totalStudents}</h3>
+                        <p>Total Students</p>
+                    </div>
                 </div>
-                <div className="pdf-controls">
-                    <label>Students for PDF:</label>
-                    <input 
-                        type="number" 
-                        className="pdf-count-input"
-                        value={pdfCount} 
-                        onChange={(e) => setPdfCount(e.target.value)}
-                        min="1"
-                    />
-                    <button onClick={generatePDF} className="pdf-btn">Download PDF</button>
+                <div className="stat-card card">
+                    <div className="stat-icon success">✅</div>
+                    <div className="stat-info">
+                        <h3>{enrolledStudents}</h3>
+                        <p>Enrolled Proofs</p>
+                    </div>
                 </div>
-                {isOrderChanged && (
-                    <button onClick={saveSequence} className="save-seq-btn">💾 Save Sequence</button>
+                <div className="stat-card card">
+                    <div className="stat-icon primary">📊</div>
+                    <div className="stat-info">
+                        <h3>{avgMarks}%</h3>
+                        <p>Average Marks</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="dashboard-content card">
+                <div className="content-toolbar">
+                    <div className="search-box">
+                        <input 
+                            type="text" 
+                            placeholder="Search name, roll no..." 
+                            className="input search-input"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <div className="toolbar-right">
+                        <div className="pdf-tool">
+                            <input 
+                                type="number" 
+                                className="input pdf-count"
+                                value={pdfCount} 
+                                onChange={(e) => setPdfCount(e.target.value)}
+                            />
+                            <button onClick={generatePDF} className="btn btn-primary pdf-btn">
+                                📄 Export PDF
+                            </button>
+                        </div>
+                        {isOrderChanged && (
+                            <button onClick={saveSequence} className="btn btn-success save-seq-btn">
+                                💾 Save Order
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {loading ? (
+                    <div className="loading-state">Loading student records...</div>
+                ) : (
+                    <div className="table-container">
+                        <table className="modern-table">
+                            <thead>
+                                <tr>
+                                    <th>Student Details</th>
+                                    <th>Course</th>
+                                    <th>Status</th>
+                                    <th>Proof</th>
+                                    <th>Theory</th>
+                                    <th>Internal</th>
+                                    <th>Total</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredSubmissions.length > 0 ? filteredSubmissions.map((sub, index) => {
+                                    const currentMarks = marksState[sub.id] || { theory: '', internal: '' };
+                                    const total = calculateTotalAndPercentage(currentMarks.theory, currentMarks.internal);
+                                    
+                                    return (
+                                    <tr 
+                                        key={sub.id}
+                                        draggable
+                                        onDragStart={() => (dragItem.current = index)}
+                                        onDragEnter={() => (dragOverItem.current = index)}
+                                        onDragEnd={handleSort}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        className="row-draggable"
+                                    >
+                                        <td>
+                                            <div className="student-info-cell">
+                                                <span className="drag-handle">☰</span>
+                                                <div>
+                                                    <div className="student-name">{sub.name}</div>
+                                                    <div className="student-roll">{sub.rollNo}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><span className="course-tag">{sub.course}</span></td>
+                                        <td>
+                                            <span className={`badge ${sub.enrolled === 'Yes' ? 'badge-success' : 'badge-error'}`}>
+                                                {sub.enrolled === 'Yes' ? 'Enrolled' : 'Pending'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {sub.screenshot ? (
+                                                <button 
+                                                    className="icon-btn view-btn"
+                                                    onClick={() => setSelectedImage(`${API_URL}/uploads/${sub.screenshot}`)}
+                                                    title="View Proof"
+                                                >
+                                                    🖼️
+                                                </button>
+                                            ) : (
+                                                <span className="text-muted">N/A</span>
+                                            )}
+                                        </td>
+                                        <td>
+                                            <input 
+                                                type="number" 
+                                                className="input marks-field"
+                                                value={currentMarks.theory} 
+                                                onChange={(e) => handleMarksChange(sub.id, 'theory', e.target.value)}
+                                                placeholder="Th"
+                                            />
+                                        </td>
+                                        <td>
+                                            <input 
+                                                type="number" 
+                                                className="input marks-field"
+                                                value={currentMarks.internal} 
+                                                onChange={(e) => handleMarksChange(sub.id, 'internal', e.target.value)}
+                                                placeholder="Int"
+                                            />
+                                        </td>
+                                        <td>
+                                            <div className="total-badge">
+                                                {total}%
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="row-actions">
+                                                <button 
+                                                    className="icon-btn save-btn"
+                                                    onClick={() => saveMarks(sub.id)}
+                                                    disabled={saving === sub.id}
+                                                    title="Save Marks"
+                                                >
+                                                    {saving === sub.id ? '⏳' : '💾'}
+                                                </button>
+                                                <button 
+                                                    className="icon-btn delete-btn"
+                                                    onClick={() => handleDelete(sub.id)}
+                                                    title="Delete Record"
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}) : (
+                                    <tr><td colSpan={8} className="empty-state">No students found matching your search.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
 
-            {loading ? (
-                <p>Loading records...</p>
-            ) : (
-                <div className="table-responsive">
-                    <table className="submissions-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Roll No</th>
-                                <th>Course</th>
-                                <th>Proof</th>
-                                <th>Theory</th>
-                                <th>Internal</th>
-                                <th>Total & %</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredSubmissions.length > 0 ? filteredSubmissions.map((sub, index) => {
-                                const currentMarks = marksState[sub.id] || { theory: '', internal: '' };
-                                const total = calculateTotalAndPercentage(currentMarks.theory, currentMarks.internal);
-                                
-                                return (
-                                <tr 
-                                    key={sub.id}
-                                    draggable
-                                    onDragStart={() => (dragItem.current = index)}
-                                    onDragEnter={() => (dragOverItem.current = index)}
-                                    onDragEnd={handleSort}
-                                    onDragOver={(e) => e.preventDefault()}
-                                    className="draggable-row"
-                                    title="Drag to reorder"
-                                >
-                                    <td><strong>☰</strong> {sub.name}</td>
-                                    <td>{sub.rollNo}</td>
-                                    <td>{sub.course}</td>
-                                    <td>
-                                        {sub.screenshot ? (
-                                            <button 
-                                                className="view-btn"
-                                                onClick={() => setSelectedImage(`${API_URL}/uploads/${sub.screenshot}`)}
-                                            >
-                                                View
-                                            </button>
-                                        ) : (
-                                            'N/A'
-                                        )}
-                                    </td>
-                                    <td>
-                                        <input 
-                                            type="number" 
-                                            className="marks-input"
-                                            value={currentMarks.theory} 
-                                            onChange={(e) => handleMarksChange(sub.id, 'theory', e.target.value)}
-                                            placeholder="Th"
-                                        />
-                                    </td>
-                                    <td>
-                                        <input 
-                                            type="number" 
-                                            className="marks-input"
-                                            value={currentMarks.internal} 
-                                            onChange={(e) => handleMarksChange(sub.id, 'internal', e.target.value)}
-                                            placeholder="Int"
-                                        />
-                                    </td>
-                                    <td>
-                                        <strong>{total}</strong> <br/>
-                                        <small className="percentage-badge">{total}%</small>
-                                    </td>
-                                    <td className="actions-cell">
-                                        <button 
-                                            className="save-marks-btn"
-                                            onClick={() => saveMarks(sub.id)}
-                                            disabled={saving === sub.id}
-                                        >
-                                            {saving === sub.id ? 'Saving...' : 'Save'}
-                                        </button>
-                                        <button 
-                                            className="delete-btn"
-                                            onClick={() => handleDelete(sub.id)}
-                                        >
-                                            Delete
-                                        </button>
-                                    </td>
-                                </tr>
-                            )}) : (
-                                <tr><td colSpan={8} style={{textAlign: 'center'}}>No submissions match your search.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-
             {selectedImage && (
                 <div className="modal-overlay" onClick={() => setSelectedImage(null)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <button className="close-btn" onClick={() => setSelectedImage(null)}>&times;</button>
-                        <img src={selectedImage} alt="Proof of Enrollment" />
+                    <div className="modal-card card" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>Proof of Enrollment</h3>
+                            <button className="close-btn" onClick={() => setSelectedImage(null)}>&times;</button>
+                        </div>
+                        <div className="modal-body">
+                            <img src={selectedImage} alt="Proof" />
+                        </div>
                     </div>
                 </div>
             )}

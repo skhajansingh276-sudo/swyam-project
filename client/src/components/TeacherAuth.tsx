@@ -36,21 +36,67 @@ const TeacherAuth: React.FC = () => {
     };
 
     return (
-        <div className="auth-container">
-            <div className="auth-box">
-                <h2>{isLogin ? 'Teacher Login' : 'Teacher Registration'}</h2>
-                {error && <p className="error-msg">{error}</p>}
-                <form onSubmit={handleSubmit}>
+        <div className="auth-wrapper">
+            <div className="auth-card card">
+                <div className="auth-header">
+                    <div className="auth-icon">
+                        {isLogin ? '🔑' : '📝'}
+                    </div>
+                    <h2>{isLogin ? 'Teacher Login' : 'Teacher Registration'}</h2>
+                    <p>{isLogin ? 'Access your dashboard to manage student enrollments.' : 'Create an account to start managing students.'}</p>
+                </div>
+
+                {error && <div className="auth-error">{error}</div>}
+
+                <form onSubmit={handleSubmit} className="auth-form">
                     {!isLogin && (
-                        <input type="text" name="name" placeholder="Full Name" onChange={handleChange} required />
+                        <div className="form-group">
+                            <label className="form-label">Full Name</label>
+                            <input 
+                                type="text" 
+                                name="name" 
+                                className="input"
+                                placeholder="e.g. Prof. Arvind Kumar" 
+                                onChange={handleChange} 
+                                required 
+                            />
+                        </div>
                     )}
-                    <input type="email" name="email" placeholder="Email Address" onChange={handleChange} required />
-                    <input type="password" name="password" placeholder="Password" onChange={handleChange} required />
-                    <button type="submit">{isLogin ? 'Login' : 'Register'}</button>
+                    <div className="form-group">
+                        <label className="form-label">Email Address</label>
+                        <input 
+                            type="email" 
+                            name="email" 
+                            className="input"
+                            placeholder="name@university.edu" 
+                            onChange={handleChange} 
+                            required 
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Password</label>
+                        <input 
+                            type="password" 
+                            name="password" 
+                            className="input"
+                            placeholder="••••••••" 
+                            onChange={handleChange} 
+                            required 
+                        />
+                    </div>
+                    <button type="submit" className="btn btn-primary auth-btn">
+                        {isLogin ? 'Sign In' : 'Create Account'}
+                    </button>
                 </form>
-                <p onClick={() => setIsLogin(!isLogin)} className="toggle-auth">
-                    {isLogin ? "Don't have an account? Register here" : "Already have an account? Login here"}
-                </p>
+
+                <div className="auth-footer">
+                    <p>
+                        {isLogin ? "Don't have an account?" : "Already have an account?"}
+                        <button onClick={() => setIsLogin(!isLogin)} className="toggle-btn">
+                            {isLogin ? 'Register here' : 'Login here'}
+                        </button>
+                    </p>
+                </div>
             </div>
         </div>
     );
