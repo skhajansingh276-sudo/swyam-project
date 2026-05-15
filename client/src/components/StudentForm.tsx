@@ -10,6 +10,7 @@ const StudentForm: React.FC = () => {
         name: '',
         rollNo: '',
         course: 'MCA',
+        semester: '1st Semester',
         enrolled: 'No'
     });
     const [file, setFile] = useState<File | null>(null);
@@ -35,6 +36,7 @@ const StudentForm: React.FC = () => {
         data.append('name', formData.name);
         data.append('rollNo', formData.rollNo);
         data.append('course', formData.course);
+        data.append('semester', formData.semester);
         data.append('enrolled', formData.enrolled);
         if (file) {
             data.append('screenshot', file);
@@ -43,7 +45,7 @@ const StudentForm: React.FC = () => {
         try {
             await axios.post(`${API_URL}/api/submit`, data);
             setMessage('Success! Your details have been submitted.');
-            setFormData({ name: '', rollNo: '', course: 'MCA', enrolled: 'No' });
+            setFormData({ name: '', rollNo: '', course: 'MCA', semester: '1st Semester', enrolled: 'No' });
             setFile(null);
         } catch (error) {
             console.error('Error submitting form:', error);
@@ -104,6 +106,15 @@ const StudentForm: React.FC = () => {
                                     <option value="MCA">MCA</option>
                                     <option value="MSC COMPUTER SCIENCE">MSC COMPUTER SCIENCE</option>
                                     <option value="MSC (DSML)">MSC (DSML)</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Semester</label>
+                                <select name="semester" className="input" value={formData.semester} onChange={handleChange}>
+                                    <option value="1st Semester">1st Semester</option>
+                                    <option value="2nd Semester">2nd Semester</option>
+                                    <option value="3rd Semester">3rd Semester</option>
+                                    <option value="4th Semester">4th Semester</option>
                                 </select>
                             </div>
                             <div className="form-group">

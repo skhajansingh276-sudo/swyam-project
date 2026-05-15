@@ -10,6 +10,7 @@ interface Submission {
     name: string;
     rollNo: string;
     course: string;
+    semester: string;
     enrolled: string;
     screenshot: string | null;
     submittedAt: string;
@@ -26,14 +27,9 @@ const TeacherDashboard: React.FC = () => {
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [marksState, setMarksState] = useState<Record<number, { theory: string, internal: string }>>({});
     const [saving, setSaving] = useState<number | null>(null);
-    const [pdfCount, setPdfCount] = useState<string>('10');
+    const [pdfCourse, setPdfCourse] = useState<string>('All');
     const [searchTerm, setSearchTerm] = useState<string>('');
     
-    // Drag and drop state
-    const dragItem = useRef<number | null>(null);
-    const dragOverItem = useRef<number | null>(null);
-    const [isOrderChanged, setIsOrderChanged] = useState(false);
-
     const navigate = useNavigate();
     const teacherName = localStorage.getItem('teacherName');
 
@@ -54,7 +50,6 @@ const TeacherDashboard: React.FC = () => {
             });
             const data: Submission[] = response.data;
             setSubmissions(data);
-            setIsOrderChanged(false);
             
             const initMarks: Record<number, { theory: string, internal: string }> = {};
             data.forEach(sub => {
@@ -132,52 +127,27 @@ const TeacherDashboard: React.FC = () => {
         return theory + internal;
     };
 
-    const handleSort = () => {
-        const _submissions = [...submissions];
-        if (dragItem.current !== null && dragOverItem.current !== null) {
-            const draggedItemContent = _submissions.splice(dragItem.current, 1)[0];
-            _submissions.splice(dragOverItem.current, 0, draggedItemContent);
-            
-            dragItem.current = null;
-            dragOverItem.current = null;
-            setSubmissions(_submissions);
-            setIsOrderChanged(true);
-        }
-    };
-
-    const saveSequence = async () => {
-        const token = localStorage.getItem('teacherToken');
-        const orderedIds = submissions.map(sub => sub.id);
-        try {
-            await axios.put(`${API_URL}/api/submissions/reorder`, { orderedIds }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setIsOrderChanged(false);
-            alert('Sequence saved successfully!');
-        } catch (error) {
-            console.error('Error saving sequence:', error);
-            alert('Failed to save sequence.');
-        }
-    };
-
-    const filteredSubmissions = submissions.filter(sub => {
-        const search = searchTerm.toLowerCase();
-        return (
-            sub.name.toLowerCase().includes(search) ||
-            sub.rollNo.toLowerCase().includes(search) ||
-            sub.course.toLowerCase().includes(search)
-        );
-    });
-
     const generatePDF = () => {
         const doc = new jsPDF();
         doc.setFontSize(18);
         doc.text("SWAYAM Student Management System", 14, 22);
         
-        const count = parseInt(pdfCount, 10) || filteredSubmissions.length;
-        const studentsToExport = filteredSubmissions.slice(0, count);
+        const studentsToExport = submissions.filter(sub => {
+            if (pdfCourse === 'All') return true;
+            return sub.course === pdfCourse;
+        }).filter(sub => {
+            const search = searchTerm.toLowerCase();
+            return (
+                sub.name.toLowerCase().includes(search) ||
+                sub.rollNo.toLowerCase().includes(search)
+            );
+        });
 
-        const tableColumn = ["S.No", "Name", "Roll No", "Course", "Enrolled", "Theory", "Internal", "Total (%)"];
+        doc.setFontSize(12);
+        doc.text(`Course: ${pdfCourse}`, 14, 30);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 36);
+
+        const tableColumn = ["S.No", "Name", "Roll No", "Course", "Semester", "Status", "Theory", "Internal", "Total"];
         const tableRows: any[] = [];
 
         studentsToExport.forEach((sub, index) => {
@@ -189,6 +159,7 @@ const TeacherDashboard: React.FC = () => {
                 sub.name,
                 sub.rollNo,
                 sub.course,
+                sub.semester,
                 sub.enrolled,
                 currentMarks.theory || '-',
                 currentMarks.internal || '-',
@@ -200,11 +171,125 @@ const TeacherDashboard: React.FC = () => {
         autoTable(doc, {
             head: [tableColumn],
             body: tableRows,
-            startY: 30,
+            startY: 40,
         });
 
-        doc.save(`students_list_${new Date().toISOString().split('T')[0]}.pdf`);
+        doc.save(`students_list_${pdfCourse}_${new Date().toISOString().split('T')[0]}.pdf`);
     };
+
+    const courses = ['MCA', 'MSC COMPUTER SCIENCE', 'MSC (DSML)'];
+
+    const renderTable = (courseSubmissions: Submission[], title: string) => (
+        <div className="course-section" key={title}>
+            <h2 className="course-title">{title} ({courseSubmissions.length})</h2>
+            <div className="table-container">
+                <table className="modern-table">
+                    <thead>
+                        <tr>
+                            <th>Student Details</th>
+                            <th>Semester</th>
+                            <th>Status</th>
+                            <th>Proof</th>
+                            <th>Theory</th>
+                            <th>Internal</th>
+                            <th>Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {courseSubmissions.length > 0 ? courseSubmissions.map((sub) => {
+                            const currentMarks = marksState[sub.id] || { theory: '', internal: '' };
+                            const total = calculateTotalAndPercentage(currentMarks.theory, currentMarks.internal);
+                            
+                            return (
+                            <tr key={sub.id}>
+                                <td>
+                                    <div className="student-info-cell">
+                                        <div>
+                                            <div className="student-name">{sub.name}</div>
+                                            <div className="student-roll">{sub.rollNo}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span className="semester-tag">{sub.semester}</span></td>
+                                <td>
+                                    <span className={`badge ${sub.enrolled === 'Yes' ? 'badge-success' : 'badge-error'}`}>
+                                        {sub.enrolled === 'Yes' ? 'Enrolled' : 'Pending'}
+                                    </span>
+                                </td>
+                                <td>
+                                    {sub.screenshot ? (
+                                        <button 
+                                            className="icon-btn view-btn"
+                                            onClick={() => setSelectedImage(`${API_URL}/uploads/${sub.screenshot}`)}
+                                            title="View Proof"
+                                        >
+                                            🖼️
+                                        </button>
+                                    ) : (
+                                        <span className="text-muted">N/A</span>
+                                    )}
+                                </td>
+                                <td>
+                                    <input 
+                                        type="number" 
+                                        className="input marks-field"
+                                        value={currentMarks.theory} 
+                                        onChange={(e) => handleMarksChange(sub.id, 'theory', e.target.value)}
+                                        placeholder="Th"
+                                    />
+                                </td>
+                                <td>
+                                    <input 
+                                        type="number" 
+                                        className="input marks-field"
+                                        value={currentMarks.internal} 
+                                        onChange={(e) => handleMarksChange(sub.id, 'internal', e.target.value)}
+                                        placeholder="Int"
+                                    />
+                                </td>
+                                <td>
+                                    <div className="total-badge">
+                                        {total}%
+                                    </div>
+                                </td>
+                                <td>
+                                    <div className="row-actions">
+                                        <button 
+                                            className="icon-btn save-btn"
+                                            onClick={() => saveMarks(sub.id)}
+                                            disabled={saving === sub.id}
+                                            title="Save Marks"
+                                        >
+                                            {saving === sub.id ? '⏳' : '💾'}
+                                        </button>
+                                        <button 
+                                            className="icon-btn delete-btn"
+                                            onClick={() => handleDelete(sub.id)}
+                                            title="Delete Record"
+                                        >
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}) : (
+                            <tr><td colSpan={8} className="empty-state">No students found in this course.</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+
+    const filteredSubmissions = submissions.filter(sub => {
+        const search = searchTerm.toLowerCase();
+        return (
+            sub.name.toLowerCase().includes(search) ||
+            sub.rollNo.toLowerCase().includes(search) ||
+            sub.course.toLowerCase().includes(search)
+        );
+    });
 
     // Calculate stats
     const totalStudents = submissions.length;
@@ -220,7 +305,7 @@ const TeacherDashboard: React.FC = () => {
         <div className="dashboard-wrapper">
             <header className="dashboard-topbar">
                 <div className="welcome-text">
-                    <h1>Dashboard</h1>
+                    <h1>Teacher Dashboard</h1>
                     <p>Welcome back, <strong>{teacherName}</strong></p>
                 </div>
                 <div className="topbar-actions">
@@ -262,7 +347,7 @@ const TeacherDashboard: React.FC = () => {
                     <div className="search-box">
                         <input 
                             type="text" 
-                            placeholder="Search name, roll no..." 
+                            placeholder="Search name or roll no..." 
                             className="input search-input"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -270,132 +355,33 @@ const TeacherDashboard: React.FC = () => {
                     </div>
                     <div className="toolbar-right">
                         <div className="pdf-tool">
-                            <input 
-                                type="number" 
-                                className="input pdf-count"
-                                value={pdfCount} 
-                                onChange={(e) => setPdfCount(e.target.value)}
-                            />
+                            <select 
+                                className="input pdf-course-select"
+                                value={pdfCourse} 
+                                onChange={(e) => setPdfCourse(e.target.value)}
+                            >
+                                <option value="All">All Courses</option>
+                                {courses.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
                             <button onClick={generatePDF} className="btn btn-primary pdf-btn">
                                 📄 Export PDF
                             </button>
                         </div>
-                        {isOrderChanged && (
-                            <button onClick={saveSequence} className="btn btn-success save-seq-btn">
-                                💾 Save Order
-                            </button>
-                        )}
                     </div>
                 </div>
 
                 {loading ? (
                     <div className="loading-state">Loading student records...</div>
                 ) : (
-                    <div className="table-container">
-                        <table className="modern-table">
-                            <thead>
-                                <tr>
-                                    <th>Student Details</th>
-                                    <th>Course</th>
-                                    <th>Status</th>
-                                    <th>Proof</th>
-                                    <th>Theory</th>
-                                    <th>Internal</th>
-                                    <th>Total</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredSubmissions.length > 0 ? filteredSubmissions.map((sub, index) => {
-                                    const currentMarks = marksState[sub.id] || { theory: '', internal: '' };
-                                    const total = calculateTotalAndPercentage(currentMarks.theory, currentMarks.internal);
-                                    
-                                    return (
-                                    <tr 
-                                        key={sub.id}
-                                        draggable
-                                        onDragStart={() => (dragItem.current = index)}
-                                        onDragEnter={() => (dragOverItem.current = index)}
-                                        onDragEnd={handleSort}
-                                        onDragOver={(e) => e.preventDefault()}
-                                        className="row-draggable"
-                                    >
-                                        <td>
-                                            <div className="student-info-cell">
-                                                <span className="drag-handle">☰</span>
-                                                <div>
-                                                    <div className="student-name">{sub.name}</div>
-                                                    <div className="student-roll">{sub.rollNo}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td><span className="course-tag">{sub.course}</span></td>
-                                        <td>
-                                            <span className={`badge ${sub.enrolled === 'Yes' ? 'badge-success' : 'badge-error'}`}>
-                                                {sub.enrolled === 'Yes' ? 'Enrolled' : 'Pending'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            {sub.screenshot ? (
-                                                <button 
-                                                    className="icon-btn view-btn"
-                                                    onClick={() => setSelectedImage(`${API_URL}/uploads/${sub.screenshot}`)}
-                                                    title="View Proof"
-                                                >
-                                                    🖼️
-                                                </button>
-                                            ) : (
-                                                <span className="text-muted">N/A</span>
-                                            )}
-                                        </td>
-                                        <td>
-                                            <input 
-                                                type="number" 
-                                                className="input marks-field"
-                                                value={currentMarks.theory} 
-                                                onChange={(e) => handleMarksChange(sub.id, 'theory', e.target.value)}
-                                                placeholder="Th"
-                                            />
-                                        </td>
-                                        <td>
-                                            <input 
-                                                type="number" 
-                                                className="input marks-field"
-                                                value={currentMarks.internal} 
-                                                onChange={(e) => handleMarksChange(sub.id, 'internal', e.target.value)}
-                                                placeholder="Int"
-                                            />
-                                        </td>
-                                        <td>
-                                            <div className="total-badge">
-                                                {total}%
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div className="row-actions">
-                                                <button 
-                                                    className="icon-btn save-btn"
-                                                    onClick={() => saveMarks(sub.id)}
-                                                    disabled={saving === sub.id}
-                                                    title="Save Marks"
-                                                >
-                                                    {saving === sub.id ? '⏳' : '💾'}
-                                                </button>
-                                                <button 
-                                                    className="icon-btn delete-btn"
-                                                    onClick={() => handleDelete(sub.id)}
-                                                    title="Delete Record"
-                                                >
-                                                    🗑️
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}) : (
-                                    <tr><td colSpan={8} className="empty-state">No students found matching your search.</td></tr>
-                                )}
-                            </tbody>
-                        </table>
+                    <div className="course-groups">
+                        {courses.map(course => {
+                            const courseSubmissions = filteredSubmissions.filter(sub => sub.course === course);
+                            return renderTable(courseSubmissions, course);
+                        })}
+                        
+                        {filteredSubmissions.filter(sub => !courses.includes(sub.course)).length > 0 && 
+                            renderTable(filteredSubmissions.filter(sub => !courses.includes(sub.course)), 'Other Courses')
+                        }
                     </div>
                 )}
             </div>

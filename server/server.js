@@ -52,6 +52,7 @@ async function initDatabase() {
         name TEXT NOT NULL,
         rollNo TEXT NOT NULL,
         course TEXT NOT NULL,
+        semester TEXT NOT NULL,
         enrolled TEXT NOT NULL,
         screenshot TEXT,
         theoryMarks INTEGER DEFAULT NULL,
@@ -67,6 +68,9 @@ async function initDatabase() {
     } catch (e) {}
     try {
         db.run(`ALTER TABLE submissions ADD COLUMN displayOrder INTEGER DEFAULT 0`);
+    } catch (e) {}
+    try {
+        db.run(`ALTER TABLE submissions ADD COLUMN semester TEXT NOT NULL DEFAULT '1st Semester'`);
     } catch (e) {}
 
     db.run(`CREATE TABLE IF NOT EXISTS teachers (
@@ -108,12 +112,20 @@ app.post('/api/teacher/register', async (req, res) => {
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
 
     try {
+        // Check if any teacher already exists
+        const result = db.exec(`SELECT COUNT(*) FROM teachers`);
+        const count = result[0].values[0][0];
+        
+        if (count > 0) {
+            return res.status(403).json({ error: 'A teacher account already exists. Only one teacher is allowed.' });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
         db.run(`INSERT INTO teachers (name, email, password) VALUES (?, ?, ?)`, [name, email, hashedPassword]);
         saveDatabase();
         res.status(201).json({ message: 'Teacher registered successfully' });
     } catch (err) {
-        res.status(400).json({ error: 'Email already exists' });
+        res.status(400).json({ error: 'Registration failed' });
     }
 });
 
@@ -149,10 +161,10 @@ app.post('/api/teacher/login', async (req, res) => {
 
 // Submit Student Data (Public)
 app.post('/api/submit', upload.single('screenshot'), (req, res) => {
-    const { name, rollNo, course, enrolled } = req.body;
+    const { name, rollNo, course, semester, enrolled } = req.body;
     const screenshot = req.file ? req.file.filename : null;
 
-    if (!name || !rollNo || !course || !enrolled) {
+    if (!name || !rollNo || !course || !semester || !enrolled) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -166,8 +178,8 @@ app.post('/api/submit', upload.single('screenshot'), (req, res) => {
             }
         } catch (e) {}
 
-        db.run(`INSERT INTO submissions (name, rollNo, course, enrolled, screenshot, displayOrder) VALUES (?, ?, ?, ?, ?, ?)`,
-            [name, rollNo, course, enrolled, screenshot, maxOrder]);
+        db.run(`INSERT INTO submissions (name, rollNo, course, semester, enrolled, screenshot, displayOrder) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [name, rollNo, course, semester, enrolled, screenshot, maxOrder]);
         saveDatabase();
         
         const lastId = db.exec(`SELECT last_insert_rowid()`)[0].values[0][0];
