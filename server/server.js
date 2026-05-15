@@ -164,7 +164,10 @@ app.post('/api/submit', upload.single('screenshot'), (req, res) => {
     const { name, rollNo, course, semester, enrolled } = req.body;
     const screenshot = req.file ? req.file.filename : null;
 
-    if (!name || !rollNo || !course || !semester || !enrolled) {
+    // Use provided semester or default for backward compatibility
+    const finalSemester = semester || '1st Semester';
+
+    if (!name || !rollNo || !course || !enrolled) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -179,7 +182,7 @@ app.post('/api/submit', upload.single('screenshot'), (req, res) => {
         } catch (e) {}
 
         db.run(`INSERT INTO submissions (name, rollNo, course, semester, enrolled, screenshot, displayOrder) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [name, rollNo, course, semester, enrolled, screenshot, maxOrder]);
+            [name, rollNo, course, finalSemester, enrolled, screenshot, maxOrder]);
         saveDatabase();
         
         const lastId = db.exec(`SELECT last_insert_rowid()`)[0].values[0][0];
